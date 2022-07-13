@@ -1,5 +1,5 @@
 import re
-from typing import List, Tuple
+from typing import Iterable, List, Tuple
 from requests import Response, Session
 
 from .models import Category
@@ -15,15 +15,14 @@ class REIStore:
             "accept-language": "en-US,en;q=0.9",
             "accept": "text/html",
             "Accept-Encoding": "gzip, deflate, br",
-
         }
-        self.session.proxies = {"http": "127.0.0.1:8888", "https": "127.0.0.1:8888"}
-        self.session.verify = False
 
-    def get_categories(self) -> List[Category]:
+    def get_categories(self) -> Iterable[Category]:
         url: str = f"{self.BASE_URL}/categories"
         resp: Response = self.session.get(url)
 
-        matches: List[Tuple[str, str]] = re.findall('<h2>\s*<a href="(/c/[^"]*)"[^>]*>\s*([^<]*?)\s*</a>\s*</h2>', resp.text)
+        matches: List[Tuple[str, str]] = re.findall(
+            '<h2>\s*<a href="(/c/[^"]*)"[^>]*>\s*([^<]*?)\s*</a>\s*</h2>', resp.text
+        )
         for match in matches:
             yield Category(name=match[1].strip(), slug=match[0])
