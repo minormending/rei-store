@@ -1,5 +1,6 @@
+import logging
 import re
-from typing import Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Tuple
 from requests import Response, Session
 
 from .models import Category
@@ -26,3 +27,36 @@ class REIStore:
         )
         for match in matches:
             yield Category(name=match[1].strip(), slug=match[0])
+
+    def get_products(self, category: Category) -> List[Dict[str, Any]]:
+        def get_page(page: int, limit: int) -> Dict[str, Any]:
+            url: str = f"{category.url()}?json=true&pagesize={limit}&page={page}"
+            resp: Response = self.session.get(url)
+            return resp.json()
+
+        results: List[Dict[str, Any]] = []
+        limit: int = 5000
+        page: int = 1
+        while True:
+            resp: Dict[str, Any] = get_page(page, limit)
+            search: Dict[str, Any] = resp.get("searchResults", {})
+            if not search:
+                logging.error(f"Failed to get products for category {category.name} page {page}")
+                break
+
+            products: List[Dict, Any] = search.get("results")
+            results.extend(products)
+
+            total_results: int = search.get("query", {}).get("totalResults")
+            if not total_results:
+                logging.warn(f"Unable to determine total results count for category request, stopping after page {page}")
+                break
+            if total_results <= (page * limit):
+                break
+            page += 1
+
+        return results
+
+
+
+

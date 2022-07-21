@@ -1,12 +1,20 @@
 import argparse
 
 from rei_store import REIStore
+from rei_store.models import Category
 
 
 def main() -> None:
     store = REIStore()
-    for c in store.get_categories():
+    categories: Category = list(store.get_categories())
+    for c in categories:
         print(c.__dict__)
+    
+    cat = categories[0]
+    products = store.get_products(cat)
+    for p in products:
+        print(p)
+        break
 
 
 if __name__ == "__main__":
