@@ -9,7 +9,7 @@ def main() -> None:
     categories: Category = list(store.get_categories())
     for c in categories:
         print(c.__dict__)
-    
+
     cat = categories[0]
     products = store.get_products(cat)
     for p in products:

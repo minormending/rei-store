@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Any, List
-from urllib.parse import quote_plus, urlencode
+
 
 @dataclass
 class BazaarFilter:
@@ -9,6 +9,7 @@ class BazaarFilter:
 
     def expression(self) -> str:
         return f"{self.field}:eq:{self.value}"
+
 
 @dataclass(kw_only=True)
 class BazaarQuery:
@@ -39,28 +40,29 @@ class BazaarQuery:
             options.append(f"stats.q{num}={self.stats}")
         if self.include:
             options.append(f"include.q{num}={','.join(self.include)}")
-        
+
         return options
+
 
 @dataclass(kw_only=True)
 class ReviewsRequest(BazaarQuery):
     resource: str = "reviews"
     stats: str = "reviews"
     filtered_stats: str = "reviews"
-    include: List[str] = field(default_factory=lambda: ["authors","products","comments"])
+    include: List[str] = field(
+        default_factory=lambda: ["authors", "products", "comments"]
+    )
 
     @classmethod
-    def by_product_id(cls, product_id: str, limit: int, offset: int) -> 'ReviewsRequest':
-        filters = [
-            BazaarFilter("productid", product_id)
-        ]
+    def by_product_id(
+        cls, product_id: str, limit: int, offset: int
+    ) -> "ReviewsRequest":
+        filters = [BazaarFilter("productid", product_id)]
         return ReviewsRequest(filters=filters, limit=limit, offset=offset)
-    
+
     @classmethod
-    def by_author_id(cls, author_id: str, limit: int, offset: int) -> 'ReviewsRequest':
-        filters = [
-            BazaarFilter("authorid", author_id)
-        ]
+    def by_author_id(cls, author_id: str, limit: int, offset: int) -> "ReviewsRequest":
+        filters = [BazaarFilter("authorid", author_id)]
         return ReviewsRequest(filters=filters, limit=limit, offset=offset)
 
 
@@ -79,4 +81,4 @@ class BazaarRequest:
         for idx, query in enumerate(self.queries):
             qs.extend(query.qs(num=idx))
 
-        return self._url + '&'.join(qs)
+        return self._url + "&".join(qs)

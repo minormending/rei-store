@@ -52,7 +52,9 @@ class REIStore:
             resp: Dict[str, Any] = get_page(page, limit)
             search: Dict[str, Any] = resp.get("searchResults", {})
             if not search:
-                logging.error(f"Failed to get products for category {category.name} page {page}")
+                logging.error(
+                    f"Failed to get products for category {category.name} page {page}"
+                )
                 break
 
             products: List[Dict, Any] = search.get("results")
@@ -60,7 +62,9 @@ class REIStore:
 
             total_results: int = search.get("query", {}).get("totalResults")
             if not total_results:
-                logging.warn(f"Unable to determine total results count for category request, stopping after page {page}")
+                logging.warn(
+                    f"Unable to determine total results count for category request, stopping after page {page}"
+                )
                 break
             if total_results <= (page * limit):
                 break
