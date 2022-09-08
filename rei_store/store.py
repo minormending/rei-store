@@ -5,7 +5,7 @@ from requests import Response, Session
 
 from rei_store.bazaar_request import BazaarRequest, ReviewsRequest
 
-from .models import Category
+from .models import Category, trim_model
 
 
 class REIStore:
@@ -16,6 +16,7 @@ class REIStore:
         self.session.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.88 Safari/537.36",
         }
+
         self.session.proxies = {"http": "127.0.0.1:8888", "https": "127.0.0.1:8888"}
         self.session.verify = False
 
@@ -35,73 +36,119 @@ class REIStore:
             yield Category(name=match[1].strip(), slug=match[0])
 
     def get_products(self, category: Category) -> List[Dict[str, Any]]:
-        def get_page(page: int, limit: int) -> Dict[str, Any]:
-            url: str = f"{category.url()}?json=true&pagesize={limit}"
-            headers: Dict[str, str] = {
-                "accept-language": "en-US,en;q=0.9",
-                "accept": "text/html",
-                "Accept-Encoding": "gzip, deflate, br",
-            }
-            resp: Response = self.session.get(url, headers=headers)
-            return resp.json()
+        url: str = f"{category.url()}?json=true&pagesize=5000"
+        headers: Dict[str, str] = {
+            "accept-language": "en-US,en;q=0.9",
+            "accept": "text/html",
+            "Accept-Encoding": "gzip, deflate, br",
+        }
+        response: Response = self.session.get(url, headers=headers)
+        resp: Dict[str, Any] = response.json()
 
-        results: List[Dict[str, Any]] = []
-        limit: int = 5000
-        page: int = 1
-        while True:
-            resp: Dict[str, Any] = get_page(page, limit)
-            search: Dict[str, Any] = resp.get("searchResults", {})
-            if not search:
-                logging.error(
-                    f"Failed to get products for category {category.name} page {page}"
-                )
-                break
+        search: Dict[str, Any] = resp.get("searchResults", {})
+        if not search:
+            logging.error(f"Failed to get products for category {category.name}")
+            return []
 
-            products: List[Dict, Any] = search.get("results")
-            results.extend(products)
+        total_results: int = search.get("query", {}).get("totalResults")
+        if not total_results:
+            logging.warn(
+                f"Unable to determine total results count for category request."
+            )
+        elif total_results > 5000:
+            logging.warning("Unable to get all products for category!")
 
-            total_results: int = search.get("query", {}).get("totalResults")
-            if not total_results:
-                logging.warn(
-                    f"Unable to determine total results count for category request, stopping after page {page}"
-                )
-                break
-            if total_results <= (page * limit):
-                break
-            page += 1
+        return search.get("results")
 
-        return results
-
-    def get_reviews(self, product_id: str) -> None:
-        def get_page(page_start: int, page_end: int, limit: int) -> Dict[str, Any]:
+    def get_reviews(
+        self, product_id: str
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+        def get_pages(page_start: int, page_end: int, limit: int) -> Dict[str, Any]:
             queries: List[ReviewsRequest] = [
-                ReviewsRequest.by_product_id(product_id, limit, (i - 1) * limit)
-                for i in range(page_start, page_end + 1)
+                ReviewsRequest.by_product_id(
+                    product_id, limit, offset=(page - 1) * limit
+                )
+                for page in range(page_start, page_end + 1)
             ]
             request: BazaarRequest = BazaarRequest(queries=queries)
             resp: Response = self.session.get(request.url())
             return resp.json()
 
-        results: List[Dict[str, Any]] = []
+        reviews: List[Dict[str, Any]] = []
+        authors: Dict[str, Dict[str, Any]] = {}
         limit: int = 100
         page: int = 1
         page_batch: int = 4
         while True:
-            resp: Dict[str, Any] = get_page(page, page + page_batch - 1, limit)
+            resp: Dict[str, Any] = get_pages(page, page + page_batch - 1, limit)
             batched_results: Dict[str, Any] = resp.get("BatchedResults", {})
             if not batched_results:
-                logging.error(f"Failed to get page {page}")
+                logging.error(f"Failed to get reviews for page {page}")
                 break
 
-            count = 0
-            queries = batched_results.values()
+            review_count: int = 0
+            queries: List[Dict[str, Any]] = batched_results.values()
+            print("len of queries", len(queries))
             for query in queries:
-                r = query.get("Results", [])
-                count += len(r)
-                results.extend(r)
+                batch_reviews: List[Dict[str, Any]] = query.get("Results", [])
+                print("got", len(batch_reviews), "reviews for batch")
+                review_count += len(batch_reviews)
+                reviews.extend(batch_reviews)
 
-            if count <= (page_batch * limit):
+                batch_authors: Dict[str, Dict[str, Any]] = query.get(
+                    "Includes", {}
+                ).get("Authors", {})
+                print("got", len(batch_authors), "authors for batch")
+                for author_id, author in batch_authors.items():
+                    authors[author_id] = author
+
+            if review_count < (page_batch * limit):
                 break
             page += page_batch
 
-        return results
+        return trim_model(reviews), trim_model(authors)
+
+    def get_reviews_by_author(
+        self, product_id: str
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+        def get_pages(page_start: int, page_end: int, limit: int) -> Dict[str, Any]:
+            queries: List[ReviewsRequest] = [
+                ReviewsRequest.by_author_id(
+                    product_id, limit, offset=(page - 1) * limit
+                )
+                for page in range(page_start, page_end + 1)
+            ]
+            request: BazaarRequest = BazaarRequest(queries=queries)
+            resp: Response = self.session.get(request.url())
+            return resp.json()
+
+        reviews: List[Dict[str, Any]] = []
+        products: Dict[str, Dict[str, Any]] = {}
+        limit: int = 100
+        page: int = 1
+        page_batch: int = 4
+        while True:
+            resp: Dict[str, Any] = get_pages(page, page + page_batch - 1, limit)
+            batched_results: Dict[str, Any] = resp.get("BatchedResults", {})
+            if not batched_results:
+                logging.error(f"Failed to get reviews for page {page}")
+                break
+
+            review_count: int = 0
+            queries: List[Dict[str, Any]] = batched_results.values()
+            for query in queries:
+                batch_reviews: List[Dict[str, Any]] = query.get("Results", [])
+                review_count += len(batch_reviews)
+                reviews.extend(batch_reviews)
+
+                batch_products: Dict[str, Dict[str, Any]] = query.get(
+                    "Includes", {}
+                ).get("Products", {})
+                for product_id, product in batch_products.items():
+                    products[product_id] = product
+
+            if review_count < (page_batch * limit):
+                break
+            page += page_batch
+
+        return trim_model(reviews), trim_model(products)
