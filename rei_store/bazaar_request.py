@@ -30,7 +30,6 @@ class BazaarQuery:
         ]
         if self.filters:
             for bf in self.filters:
-                print(bf)
                 options.append(f"filter.q{num}={bf.expression()}")
         if self.filtered_stats:
             options.append(f"filteredstats.q{num}={self.filtered_stats}")
