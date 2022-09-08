@@ -16,6 +16,9 @@ def main() -> None:
         print(p)
         break
 
+    product = products[0]
+    reviews = store.get_reviews(product["prodId"])
+
 
 if __name__ == "__main__":
     main()
