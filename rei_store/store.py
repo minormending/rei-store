@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 from typing import Any, Dict, Iterable, List, Tuple
@@ -29,11 +30,20 @@ class REIStore:
         }
         resp: Response = self.session.get(url, headers=headers)
 
-        matches: List[Tuple[str, str]] = re.findall(
-            '<h2>\s*<a href="(/c/[^"]*)"[^>]*>\s*([^<]*?)\s*</a>\s*</h2>', resp.text
-        )
-        for match in matches:
-            yield Category(name=match[1].strip(), slug=match[0])
+        script_tag: str = '<script type="application/json" id="modelData">'
+        start_idx: int = resp.text.index(script_tag)
+        if start_idx < 0:
+            raise StopIteration
+
+        end_idx: int = resp.text.index('</script>', start_idx)
+        raw: str = resp.text[start_idx + len(script_tag):end_idx].strip()
+        
+        data: Dict[str, Any] = json.loads(raw)
+        parent_categories: List[Dict[str, Any]] = data.get("pageData", {}).get("allCategories", [])
+        for parent_category in parent_categories:
+            child_categories: List[Dict[str, Any]] = parent_category.get("childrenCategories", [])
+            for category in child_categories:
+                yield Category(name=category.get("name"), slug=category.get("canonical"))
 
     def get_products(self, category: Category) -> List[Dict[str, Any]]:
         url: str = f"{category.url()}?json=true&pagesize=5000"
