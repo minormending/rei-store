@@ -1,7 +1,7 @@
 import json
 import logging
 import re
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 from requests import Response, Session
 
 from rei_store.bazaar_request import BazaarRequest, ReviewsRequest
@@ -30,20 +30,32 @@ class REIStore:
         }
         resp: Response = self.session.get(url, headers=headers)
 
+        # Get the embedded JSON categories from the page.
         script_tag: str = '<script type="application/json" id="modelData">'
         start_idx: int = resp.text.index(script_tag)
         if start_idx < 0:
             raise StopIteration
 
-        end_idx: int = resp.text.index('</script>', start_idx)
-        raw: str = resp.text[start_idx + len(script_tag):end_idx].strip()
-        
+        end_idx: int = resp.text.index("</script>", start_idx)
+        raw: str = resp.text[start_idx + len(script_tag) : end_idx].strip()
+
+        # Extract the child categories from JSON blob
         data: Dict[str, Any] = json.loads(raw)
-        parent_categories: List[Dict[str, Any]] = data.get("pageData", {}).get("allCategories", [])
+        parent_categories: List[Dict[str, Any]] = data.get("pageData", {}).get(
+            "allCategories", []
+        )
         for parent_category in parent_categories:
-            child_categories: List[Dict[str, Any]] = parent_category.get("childrenCategories", [])
+            child_categories: List[Dict[str, str]] = parent_category.get(
+                "childrenCategories", []
+            )
             for category in child_categories:
-                yield Category(name=category.get("name"), slug=category.get("canonical"))
+                link_slug: Optional[str] = category.get("canonical")
+                if not link_slug:
+                    continue
+
+                yield Category(
+                    name=category.get("name", ""), slug=link_slug
+                )
 
     def get_products(self, category: Category) -> List[Dict[str, Any]]:
         url: str = f"{category.url()}?json=true&pagesize=5000"

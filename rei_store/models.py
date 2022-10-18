@@ -21,7 +21,7 @@ def trim_model(model: Any) -> Any:
         return output
     elif isinstance(model, dict):
         output: Dict[str, Any] = {}
-        for key,value in model.items():
+        for key, value in model.items():
             cleaned_value = trim_model(value)
             if cleaned_value:
                 output[key] = cleaned_value
